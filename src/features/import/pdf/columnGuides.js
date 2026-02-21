@@ -39,12 +39,34 @@ function clusterXs(xs, maxGap) {
   return clusters.map((g) => g.reduce((s, v) => s + v, 0) / g.length);
 }
 
+function clusterGuideCandidates(points, maxGap) {
+  if (!points.length) return [];
+
+  const sorted = [...points].sort((a, b) => a.x - b.x);
+  const groups = [];
+  let group = [sorted[0]];
+
+  for (let i = 1; i < sorted.length; i++) {
+    const p = sorted[i];
+    if (p.x - sorted[i - 1].x <= maxGap) group.push(p);
+    else {
+      groups.push(group);
+      group = [p];
+    }
+  }
+  groups.push(group);
+
+  return groups.map((g) => {
+    const totalWeight = g.reduce((s, p) => s + p.w, 0) || 1;
+    const weightedX = g.reduce((s, p) => s + p.x * p.w, 0) / totalWeight;
+    return { x: weightedX, w: totalWeight };
+  });
+}
+
 function evenlySpacedGuides(selection, colCount) {
   const guideCount = Math.max(1, colCount - 1);
   const step = selection.w / colCount;
-  const out = [];
-  for (let i = 1; i <= guideCount; i++) out.push(selection.x + step * i);
-  return out;
+  return Array.from({ length: guideCount }, (_, i) => selection.x + step * (i + 1));
 }
 
 export function detectColumnGuides(selection, itemsInSelection, { maxRows = 50 } = {}) {
@@ -52,37 +74,56 @@ export function detectColumnGuides(selection, itemsInSelection, { maxRows = 50 }
     return { guides: [], clusterCenters: [] };
   }
 
-  // We sample only the first rows for performance and robustness on long PDFs.
   const rows = clusterRowsByY(itemsInSelection, 6);
-  const sampled = rows.slice(0, maxRows).flatMap((r) => r.items);
+  const sampledRows = rows.slice(0, maxRows);
+  const sampledItems = sampledRows.flatMap((r) => r.items);
 
-  const dynamicGap = clamp(selection.w / 40, 8, 30);
-  const centers = clusterXs(sampled.map((it) => it.x), dynamicGap)
-    .filter((x) => x >= selection.x && x <= selection.x + selection.w)
+  const dynamicGap = clamp(selection.w / 42, 8, 28);
+  const centers = clusterXs(sampledItems.map((it) => it.x), dynamicGap)
+    .filter((x) => x > selection.x + 2 && x < selection.x + selection.w - 2)
     .sort((a, b) => a - b);
 
-  let guides = [];
-  if (centers.length >= 2) {
-    // Guides are boundaries between detected x-clusters (column centers).
-    for (let i = 0; i < centers.length - 1; i++) {
-      guides.push((centers[i] + centers[i + 1]) / 2);
+  // Better default placement: use biggest whitespace gaps per row as candidate boundaries.
+  const guideCandidates = [];
+  for (const row of sampledRows) {
+    const rowItems = [...row.items].sort((a, b) => a.x - b.x);
+    for (let i = 0; i < rowItems.length - 1; i++) {
+      const left = rowItems[i];
+      const right = rowItems[i + 1];
+      const gap = right.x - left.x;
+      if (gap >= dynamicGap * 1.3) {
+        guideCandidates.push({ x: (left.x + right.x) / 2, w: gap });
+      }
     }
-
-    const maxGuides = MAX_COLS - 1;
-    if (guides.length > maxGuides) {
-      const step = guides.length / maxGuides;
-      guides = Array.from({ length: maxGuides }, (_, i) => guides[Math.floor(i * step)]);
-    }
-  } else {
-    guides = evenlySpacedGuides(selection, 3);
   }
+
+  const clusteredCandidates = clusterGuideCandidates(guideCandidates, dynamicGap * 1.5)
+    .sort((a, b) => b.w - a.w)
+    .slice(0, MAX_COLS - 1)
+    .map((p) => p.x)
+    .sort((a, b) => a - b);
+
+  let guides = clusteredCandidates;
+
+  if (!guides.length && centers.length >= 2) {
+    guides = [];
+    for (let i = 0; i < centers.length - 1; i++) {
+      const gap = centers[i + 1] - centers[i];
+      if (gap >= dynamicGap * 1.1) {
+        guides.push((centers[i] + centers[i + 1]) / 2);
+      }
+    }
+  }
+
+  if (!guides.length) guides = evenlySpacedGuides(selection, 3);
 
   const minX = selection.x + 4;
   const maxX = selection.x + selection.w - 4;
   guides = guides
     .map((x) => clamp(x, minX, maxX))
     .sort((a, b) => a - b)
-    .filter((x, idx, arr) => idx === 0 || Math.abs(x - arr[idx - 1]) > 4);
+    .filter((x, idx, arr) => idx === 0 || Math.abs(x - arr[idx - 1]) > 6)
+    .slice(0, MAX_COLS - 1);
 
   const colCount = clamp(guides.length + 1, MIN_COLS, MAX_COLS);
   if (guides.length !== colCount - 1) {
@@ -98,7 +139,7 @@ export function rowClusterAndBinByGuides(itemsInSelection, selection, guides) {
   const rows = clusterRowsByY(itemsInSelection, 6);
 
   // Binning by fixed guide boundaries keeps multiline text in the same column.
-  const rawRows = rows
+  return rows
     .map((row) => {
       const bins = Array.from({ length: boundaries.length - 1 }, () => []);
       for (const it of row.items) {
@@ -124,6 +165,4 @@ export function rowClusterAndBinByGuides(itemsInSelection, selection, guides) {
       );
     })
     .filter((r) => r.some((v) => String(v || "").trim().length > 0));
-
-  return rawRows;
 }
