@@ -259,71 +259,90 @@ if (!hasCode1) {
 
   // -------------------- Build typedRows from anchor --------------------
   function buildFromAnchorAndGoTree() {
-  const hasStructure = Boolean(codeCol);
+    try {
+      const codeCol = targetToSource(mapping, "Code1");
+      const hasStructure = Boolean(codeCol);
+      const descCol = targetToSource(mapping, "Omschrijving");
 
-    const descCol = targetToSource(mapping, "Omschrijving");
+      // slice from anchor
+      const sliced = rowsAll.slice(anchorIndex);
 
-    // slice from anchor
-    const sliced = rowsAll.slice(anchorIndex);
+      // clean: drop rows with empty description
+      const cleaned = sliced.filter((r) => normalizeStr(descCol ? r?.[descCol] : "").length > 0);
 
-    // clean: drop rows with empty description
-    const cleaned = sliced.filter((r) => normalizeStr(descCol ? r?.[descCol] : "").length > 0);
+      // auto types
+      const autos = computeAutoTypes(cleaned, {
+        getVal,
+        code1Source: codeCol,
+        descSource: descCol,
+        qtySource: targetToSource(mapping, "Aantal"),
+        ecSource: targetToSource(mapping, "EC"),
+        hcSource: targetToSource(mapping, "HC"),
+      });
 
-    // auto types
-    const autos = computeAutoTypes(cleaned, {
-      getVal,
-      code1Source: codeCol,
-      descSource: descCol,
-      qtySource: targetToSource(mapping, "Aantal"),
-      ecSource: targetToSource(mapping, "EC"),
-      hcSource: targetToSource(mapping, "HC"),
-    });
+      // anchor spec + auto levels
+      const firstRow = cleaned[0];
+      const spec = firstRow
+        ? deriveAnchorFromFirstChapterRow(firstRow, { getVal, code1Source: codeCol })
+        : { class: null, dottedDepth: 0, example: "" };
+      setAnchorSpec(spec);
 
-    // anchor spec + auto levels
-    const firstRow = cleaned[0];
-    const spec = firstRow
-      ? deriveAnchorFromFirstChapterRow(firstRow, { getVal, code1Source: codeCol })
-      : { class: null, dottedDepth: 0, example: "" };
-    setAnchorSpec(spec);
+      const autoLevels = computeAutoLevelsFromTypes(cleaned, autos, spec, {
+        getVal,
+        code1Source: codeCol,
+        maxLevel: MAX_LEVEL,
+      });
 
-    const autoLevels = computeAutoLevelsFromTypes(cleaned, autos, spec, {
-      getVal,
-      code1Source: codeCol,
-      maxLevel: MAX_LEVEL,
-    });
+      let tr;
 
-    let tr;
+      if (!hasStructure) {
+        // 🔹 ONGestructureerde offerte (geen Code1)
+        tr = cleaned.map((row) => ({
+          row,
+          autoType: "T", // alles is een post
+          type: "T",
+          autoLevel: 1, // alles op level 1
+          manualLevel: 1,
+        }));
 
-if (!hasStructure) {
-  // 🔹 ONGestructureerde offerte (geen Code1)
-  tr = cleaned.map((row) => ({
-    row,
-    autoType: "T",       // alles is een post
-    type: "T",
-    autoLevel: 1,        // alles op level 1
-    manualLevel: 1,
-  }));
+        // forceer anchorSpec: 1 hoofdstuk op level 0
+        setAnchorSpec({
+          class: "HOOFDSTUK",
+          dottedDepth: 0,
+          example: generatedRoot.title || "Offerte",
+        });
+      } else {
+        // 🔹 Normale gestructureerde meetstaat
+        tr = cleaned.map((row, idx) => ({
+          row,
+          autoType: autos[idx],
+          type: autos[idx],
+          autoLevel: autoLevels[idx],
+          manualLevel: null,
+        }));
+      }
 
-  // forceer anchorSpec: 1 hoofdstuk op level 0
-  setAnchorSpec({
-    class: "HOOFDSTUK",
-    dottedDepth: 0,
-    example: generatedRoot.title || "Offerte",
-  });
-} else {
-  // 🔹 Normale gestructureerde meetstaat
-  tr = cleaned.map((row, idx) => ({
-    row,
-    autoType: autos[idx],
-    type: autos[idx],
-    autoLevel: autoLevels[idx],
-    manualLevel: null,
-  }));
-}
+      setTypedRows(tr);
+      setStep("treePreview");
+    } catch (err) {
+      console.error("Kon anker niet bevestigen", err);
 
+      const descCol = targetToSource(mapping, "Omschrijving");
+      const fallbackRows = rowsAll
+        .slice(anchorIndex)
+        .filter((r) => normalizeStr(descCol ? r?.[descCol] : "").length > 0)
+        .map((row) => ({
+          row,
+          autoType: "T",
+          type: "T",
+          autoLevel: 1,
+          manualLevel: 1,
+        }));
 
-    setTypedRows(tr);
-    setStep("treePreview");
+      setAnchorSpec({ class: "HOOFDSTUK", dottedDepth: 0, example: generatedRoot.title || "Offerte" });
+      setTypedRows(fallbackRows);
+      setStep("treePreview");
+    }
   }
 
   // -------------------- effectiveRows (live computed levels) --------------------
