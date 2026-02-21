@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Meetstaat Convert Preview</title>
+    <style>
+      :root { font-family: Inter, system-ui, Arial, sans-serif; }
+      body { margin: 0; background: #f5f7fb; color: #1f2937; }
+      .container { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+      .card { background: #fff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,.08); padding: 1rem; margin-bottom: 1rem; }
+      h1, h2, h3 { margin-top: 0; }
+      textarea { width: 100%; min-height: 180px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9rem; }
+      button { border: none; background: #2563eb; color: #fff; padding: .6rem 1rem; border-radius: 8px; cursor: pointer; }
+      button:hover { background: #1d4ed8; }
+      select { padding: .5rem; border-radius: 8px; border: 1px solid #cbd5e1; min-width: 320px; }
+      pre { white-space: pre-wrap; word-break: break-word; background: #0b1020; color: #dbeafe; padding: 1rem; border-radius: 8px; min-height: 160px; }
+      .error { color: #b91c1c; font-weight: 600; margin-top: .75rem; }
+      .ok { color: #166534; font-weight: 600; margin-top: .75rem; }
+      .hidden { display: none; }
+      .tree { margin-top: .75rem; padding: .75rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
+      .tree ul { margin: .4rem 0 .4rem 1rem; padding-left: 1rem; }
+      .tree li { margin: .25rem 0; }
+      .muted { color: #64748b; font-size: .9rem; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <h1>Meetstaat Converter (Frontend Preview)</h1>
+        <p>Plak JSON rows (array), klik op <strong>Convert</strong>, kies dan je ankerregel in stap 5.</p>
+        <textarea id="input">[
+  {"project": "abc-1", "item": "Hoofdstuk 01 Grondwerken", "quantity": "1", "unit": "st"},
+  {"project": "abc-1", "item": "Zand", "quantity": "2", "unit": "M3"},
+  {"project": "abc-1", "item": "Beton", "quantity": 4.5, "unit": "M3"}
+]</textarea>
+        <div style="margin-top:.75rem;"><button id="convertBtn">Convert</button></div>
+        <div id="status"></div>
+      </div>
+
+      <div class="card">
+        <h2>5) Kies eerste hoofdstukregel (anker)</h2>
+        <p class="muted">Klik op <strong>Bevestig anker</strong> om de treeview op te bouwen.</p>
+        <div style="display:flex; gap:.5rem; flex-wrap:wrap; align-items:center;">
+          <select id="anchorSelect"></select>
+          <button id="confirmAnchorBtn">Bevestig anker</button>
+        </div>
+        <div id="treeViewContainer" class="tree hidden">
+          <h3>Treeview</h3>
+          <ul id="treeRoot"></ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Output</h2>
+        <pre id="output"></pre>
+      </div>
+    </div>
+
+    <script src="./main.js"></script>
+  </body>
+</html>
