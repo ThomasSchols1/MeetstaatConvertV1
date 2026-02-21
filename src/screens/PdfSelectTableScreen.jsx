@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
+import { clamp } from "../utils/format";
+import { detectColumnGuides, rowClusterAndBinByGuides } from "../features/import/pdf/columnGuides";
 
 // pdf.js worker instellen (Vite-friendly)
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -27,6 +29,13 @@ export default function PdfSelectTableScreen({
   const [startPt, setStartPt] = useState(null);
   const [rect, setRect] = useState(null); // {x,y,w,h}
 
+  // Guide state (viewport x coordinates)
+  const [colGuidesXs, setColGuidesXs] = useState([]);
+  const [clusterCenters, setClusterCenters] = useState([]);
+  const [activeGuideIdx, setActiveGuideIdx] = useState(null);
+
+  const [pageTextItems, setPageTextItems] = useState([]);
+
   useEffect(() => {
     if (!pdfFile) return;
 
@@ -35,58 +44,66 @@ export default function PdfSelectTableScreen({
       const doc = await pdfjsLib.getDocument({ data: buf }).promise;
       setPdfDoc(doc);
       setPageNum(1);
-
-      // meta
-      // (we geven dit straks terug via onExtract)
     })();
   }, [pdfFile]);
 
   const pageCount = pdfDoc?.numPages || 0;
 
-async function renderPage() {
-  if (!pdfDoc) return;
+  async function renderPage() {
+    if (!pdfDoc) return;
 
-  // ✅ cancel vorige render als die nog loopt
-  if (renderTaskRef.current) {
-    try {
-      renderTaskRef.current.cancel();
-    } catch (e) {}
-    renderTaskRef.current = null;
-  }
-
-  const page = await pdfDoc.getPage(pageNum);
-  const viewport = page.getViewport({ scale });
-
-  const canvas = canvasRef.current;
-  if (!canvas) return;
-
-  const ctx = canvas.getContext("2d");
-  canvas.width = Math.ceil(viewport.width);
-  canvas.height = Math.ceil(viewport.height);
-
-  setPageViewport(viewport);
-
-  // reset selection when rerendering
-  setRect(null);
-  setStartPt(null);
-
-  const task = page.render({ canvasContext: ctx, viewport });
-  renderTaskRef.current = task;
-
-  try {
-    await task.promise;
-  } catch (err) {
-    // cancel is oké, dat is net de bedoeling
-    if (err?.name !== "RenderingCancelledException") {
-      throw err;
-    }
-  } finally {
-    if (renderTaskRef.current === task) {
+    // ✅ cancel vorige render als die nog loopt
+    if (renderTaskRef.current) {
+      try {
+        renderTaskRef.current.cancel();
+      } catch {
+        // noop
+      }
       renderTaskRef.current = null;
     }
-  }
-}
 
+    const page = await pdfDoc.getPage(pageNum);
+    const viewport = page.getViewport({ scale });
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+
+    setPageViewport(viewport);
+
+    // reset selectie + guides bij pagina/zoom wijziging
+    setRect(null);
+    setStartPt(null);
+    setColGuidesXs([]);
+    setClusterCenters([]);
+
+    const task = page.render({ canvasContext: ctx, viewport });
+    renderTaskRef.current = task;
+
+    try {
+      await task.promise;
+    } catch (err) {
+      if (err?.name !== "RenderingCancelledException") throw err;
+    } finally {
+      if (renderTaskRef.current === task) renderTaskRef.current = null;
+    }
+
+    const textContent = await page.getTextContent();
+    const mappedItems = (textContent.items || [])
+      .map((it) => {
+        const tx = pdfjsLib.Util.transform(viewport.transform, it.transform);
+        const x = tx[4];
+        const y = tx[5];
+        const str = String(it.str || "").trim();
+        return { x, y, str };
+      })
+      .filter((it) => it.str.length > 0);
+
+    setPageTextItems(mappedItems);
+  }
 
   useEffect(() => {
     renderPage();
@@ -108,15 +125,34 @@ async function renderPage() {
 
   function getMousePos(e) {
     const el = overlayRef.current;
-    const rect = el.getBoundingClientRect();
+    const box = el.getBoundingClientRect();
     return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+      x: e.clientX - box.left,
+      y: e.clientY - box.top,
     };
   }
 
+  function itemsInRect(targetRect) {
+    if (!targetRect) return [];
+    return pageTextItems.filter(
+      (it) =>
+        it.x >= targetRect.x &&
+        it.x <= targetRect.x + targetRect.w &&
+        it.y >= targetRect.y &&
+        it.y <= targetRect.y + targetRect.h
+    );
+  }
+
+  function autoDetectGuides(targetRect = rect) {
+    if (!targetRect) return;
+    const inBox = itemsInRect(targetRect);
+    const { guides, clusterCenters: centers } = detectColumnGuides(targetRect, inBox);
+    setColGuidesXs(guides);
+    setClusterCenters(centers);
+  }
+
   function onMouseDown(e) {
-    if (!pageViewport) return;
+    if (!pageViewport || activeGuideIdx != null) return;
     setDragging(true);
     const p = getMousePos(e);
     setStartPt(p);
@@ -124,6 +160,34 @@ async function renderPage() {
   }
 
   function onMouseMove(e) {
+    if (activeGuideIdx != null && rect) {
+      const p = getMousePos(e);
+      const minX = rect.x + 4;
+      const maxX = rect.x + rect.w - 4;
+      const snapThreshold = 7;
+
+      let nextX = clamp(p.x, minX, maxX);
+
+      // optional nice-to-have: snap to detected x centers
+      const nearestCenter = clusterCenters.reduce(
+        (best, cx) => {
+          const d = Math.abs(cx - nextX);
+          return d < best.d ? { x: cx, d } : best;
+        },
+        { x: nextX, d: Number.POSITIVE_INFINITY }
+      );
+      if (nearestCenter.d <= snapThreshold) nextX = nearestCenter.x;
+
+      setColGuidesXs((prev) => {
+        const sorted = [...prev].sort((a, b) => a - b);
+        const left = activeGuideIdx > 0 ? sorted[activeGuideIdx - 1] + 6 : minX;
+        const right = activeGuideIdx < sorted.length - 1 ? sorted[activeGuideIdx + 1] - 6 : maxX;
+        sorted[activeGuideIdx] = clamp(nextX, left, right);
+        return sorted;
+      });
+      return;
+    }
+
     if (!dragging || !startPt) return;
     const p = getMousePos(e);
     const r = {
@@ -136,15 +200,66 @@ async function renderPage() {
   }
 
   function onMouseUp() {
-    setDragging(false);
-    if (rect && (rect.w < 10 || rect.h < 10)) {
-      // te klein → reset
-      setRect(null);
+    if (activeGuideIdx != null) {
+      setActiveGuideIdx(null);
+      return;
     }
+
+    setDragging(false);
+    if (!rect || rect.w < 10 || rect.h < 10) {
+      setRect(null);
+      setColGuidesXs([]);
+      setClusterCenters([]);
+      return;
+    }
+
+    autoDetectGuides(rect);
   }
 
-async function extractFromSelection() {
-  try {
+  function addGuide() {
+    if (!rect) return;
+    const minX = rect.x + 4;
+    const maxX = rect.x + rect.w - 4;
+
+    setColGuidesXs((prev) => {
+      const sorted = [...prev].sort((a, b) => a - b);
+      if (!sorted.length) return [rect.x + rect.w / 2];
+
+      const edges = [minX, ...sorted, maxX];
+      let widest = { idx: 0, w: 0 };
+      for (let i = 0; i < edges.length - 1; i++) {
+        const w = edges[i + 1] - edges[i];
+        if (w > widest.w) widest = { idx: i, w };
+      }
+
+      const newX = (edges[widest.idx] + edges[widest.idx + 1]) / 2;
+      const next = [...sorted, clamp(newX, minX, maxX)].sort((a, b) => a - b);
+      return next.slice(0, 9); // max 10 columns => 9 guides
+    });
+  }
+
+  function removeGuide(index = null) {
+    setColGuidesXs((prev) => {
+      if (!prev.length) return prev;
+      const sorted = [...prev].sort((a, b) => a - b);
+      if (typeof index === "number") return sorted.filter((_, i) => i !== index);
+
+      if (!rect) return sorted.slice(0, -1);
+      const centerX = rect.x + rect.w / 2;
+      let nearest = 0;
+      let nearestDist = Number.POSITIVE_INFINITY;
+      sorted.forEach((x, i) => {
+        const d = Math.abs(x - centerX);
+        if (d < nearestDist) {
+          nearest = i;
+          nearestDist = d;
+        }
+      });
+      return sorted.filter((_, i) => i !== nearest);
+    });
+  }
+
+  async function extractFromSelection() {
     if (!pdfDoc) {
       alert("PDF is nog niet geladen.");
       return;
@@ -160,117 +275,27 @@ async function extractFromSelection() {
       return;
     }
 
-    const page = await pdfDoc.getPage(pageNum);
-    const textContent = await page.getTextContent();
-
-    // 1️⃣ Verzamel alle tekst-items met viewport-coördinaten
-    const items = (textContent.items || [])
-      .map((it) => {
-        const tx = pdfjsLib.Util.transform(
-          pageViewport.transform,
-          it.transform
-        );
-        const x = tx[4];
-        const y = tx[5];
-        const str = String(it.str || "").trim();
-        return { x, y, str };
-      })
-      .filter((it) => it.str.length > 0);
-
-    // 2️⃣ Filter items binnen selectie-rectangle
-    const sel = rect;
-    const inBox = items.filter(
-      (it) =>
-        it.x >= sel.x &&
-        it.x <= sel.x + sel.w &&
-        it.y >= sel.y &&
-        it.y <= sel.y + sel.h
-    );
+    const inBox = itemsInRect(rect);
 
     if (inBox.length === 0) {
-      alert(
-        "Ik vond geen tekst in je selectie. Is dit een scan? (OCR volgt later)"
-      );
+      alert("Ik vond geen tekst in je selectie. Is dit een scan? (OCR volgt later)");
       return;
     }
 
-    // 3️⃣ Sorteer en groepeer per rij (Y-as)
-    const yTolerance = 6;
-    const sorted = [...inBox].sort(
-      (a, b) => a.y - b.y || a.x - b.x
-    );
+    const sortedGuides = [...colGuidesXs].sort((a, b) => a - b);
+    const rawRows = rowClusterAndBinByGuides(inBox, rect, sortedGuides);
 
-    const rows = [];
-    for (const it of sorted) {
-      const last = rows[rows.length - 1];
-      if (!last || Math.abs(last.y - it.y) > yTolerance) {
-        rows.push({ y: it.y, cells: [{ x: it.x, str: it.str }] });
-      } else {
-        last.cells.push({ x: it.x, str: it.str });
-      }
-    }
-
-    // 4️⃣ Bouw rawRows (kolommen op basis van X-gaps)
-    const xGap = 18;
-    const rawRows = rows
-      .map((r) => {
-        const cells = r.cells.sort((a, b) => a.x - b.x);
-
-        const out = [];
-        let cur = "";
-        let prevX = null;
-
-        for (const c of cells) {
-          if (prevX !== null && c.x - prevX > xGap) {
-            out.push(cur.trim());
-            cur = c.str;
-          } else {
-            cur = cur ? `${cur} ${c.str}` : c.str;
-          }
-          prevX = c.x;
-        }
-
-        if (cur.trim()) out.push(cur.trim());
-        return out;
-      })
-      .filter((r) => r.some((v) => String(v || "").trim().length > 0));
-
-    // 5️⃣ Split "1 Dakgroep..." → ["1", "Dakgroep..."]
-    function splitLeadingCode(rows2d) {
-      const codeRe = /^(\d+(?:[.,]\d+)*)(\s+)(.+)$/;
-      return rows2d.map((row) => {
-        if (!row || row.length === 0) return row;
-
-        const first = String(row[0] || "").trim();
-        const m = first.match(codeRe);
-        if (m) {
-          const code = m[1];
-          const rest = m[3];
-          if (row.length === 1) return [code, rest];
-          return [code, rest, ...row.slice(1)];
-        }
-        return row;
-      });
-    }
-
-    const rawRowsFixed = splitLeadingCode(rawRows);
-
-    // 6️⃣ Meta + doorgaan
     const meta = {
       fileName: pdfFile?.name || "",
       pages: pageCount,
       titleGuess: (pdfFile?.name || "").replace(/\.pdf$/i, ""),
     };
 
-    console.log("PDF extract sample:", rawRowsFixed.slice(0, 5));
-    alert(`Extractie oké: ${rawRowsFixed.length} rijen gevonden`);
+    console.log("PDF extract sample:", rawRows.slice(0, 5));
+    alert(`Extractie oké: ${rawRows.length} rijen gevonden`);
 
-    onExtract(rawRowsFixed, meta);
-  } catch (err) {
-    console.error("extractFromSelection crashed:", err);
-    alert(`Fout bij extractie: ${err?.message || err}`);
+    onExtract(rawRows, meta);
   }
-}
 
   return (
     <div>
@@ -284,8 +309,11 @@ async function extractFromSelection() {
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
         <button onClick={onBack}>Terug</button>
+        <button onClick={() => autoDetectGuides()} disabled={!rect}>Auto kolommen</button>
+        <button onClick={addGuide} disabled={!rect}>+ Kolomlijn</button>
+        <button onClick={() => removeGuide()} disabled={!rect || !colGuidesXs.length}>Verwijder kolomlijn</button>
 
         <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
           <button disabled={pageNum <= 1} onClick={() => setPageNum((p) => Math.max(1, p - 1))}>
@@ -335,30 +363,80 @@ async function extractFromSelection() {
           style={{
             position: "absolute",
             inset: 0,
-            cursor: "crosshair",
+            cursor: activeGuideIdx != null ? "ew-resize" : "crosshair",
           }}
         />
 
         {rect && (
-          <div
-            style={{
-              position: "absolute",
-              left: rect.x,
-              top: rect.y,
-              width: rect.w,
-              height: rect.h,
-              border: "2px solid #1976d2",
-              background: "rgba(25,118,210,0.10)",
-              pointerEvents: "none",
-            }}
-          />
+          <>
+            <div
+              style={{
+                position: "absolute",
+                left: rect.x,
+                top: rect.y,
+                width: rect.w,
+                height: rect.h,
+                border: "2px solid #1976d2",
+                background: "rgba(25,118,210,0.10)",
+                pointerEvents: "none",
+              }}
+            />
+
+            {colGuidesXs
+              .slice()
+              .sort((a, b) => a - b)
+              .map((x, idx) => (
+                <div
+                  key={`${x}-${idx}`}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    setActiveGuideIdx(idx);
+                  }}
+                  style={{
+                    position: "absolute",
+                    left: x - 1,
+                    top: rect.y,
+                    width: 3,
+                    height: rect.h,
+                    background: "#ff5722",
+                    cursor: "ew-resize",
+                  }}
+                >
+                  <button
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeGuide(idx);
+                    }}
+                    title="Verwijder kolomlijn"
+                    style={{
+                      position: "absolute",
+                      top: -22,
+                      left: -8,
+                      width: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      border: "1px solid #ccc",
+                      background: "white",
+                      color: "#b71c1c",
+                      fontSize: 12,
+                      lineHeight: "14px",
+                      padding: 0,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+          </>
         )}
       </div>
 
       <div style={{ marginTop: 10, color: "#666", fontSize: 12 }}>
-        Sleep een rechthoek rond de tabel met posten. Klik daarna <b>Extracteer tabel</b>.
+        Teken eerst een selectiezone. Daarna kan je kolomlijnen slepen voor stabiele kolommen.
         <br />
-        (MVP: werkt op PDF’s met selecteerbare tekst. OCR voor scans voegen we later toe.)
+        “Extracteer tabel” gebruikt vaste bins tussen de kolomlijnen i.p.v. xGap.
       </div>
     </div>
   );
