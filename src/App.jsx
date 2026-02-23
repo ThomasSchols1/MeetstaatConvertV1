@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import "./App.css";
 
 // ---------- config / utils ----------
 import { MAX_LEVEL, ORDERED_OUTPUT_FIELDS, NUMERIC_TARGETS } from "./config/constants";
@@ -417,24 +418,20 @@ if (!hasCode1) {
 
   // -------------------- UI --------------------
 return (
-  <div
-    style={{
-      maxWidth: 1400,
-      margin: "24px auto",
-      fontFamily: "system-ui, sans-serif",
-    }}
-  >
-    <h2>Meetstaat Converter</h2>
-
-    <div style={{ color: "#666", marginBottom: 12 }}>
-      stap: <strong>{step}</strong>
-      {anchorSpec?.class ? (
-        <span style={{ marginLeft: 12 }}>
-          (Level-0 anker: <b>{anchorSpec.class}</b> · voorbeeld:{" "}
-          <b>{anchorSpec.example || "-"}</b>)
-        </span>
-      ) : null}
+  <div className="app-shell">
+    <div className="app-header">
+      <div className="app-title">
+        <h2>Meetstaat Converter</h2>
+        <div className="app-subtitle">Upload, controleer structuur en exporteer.</div>
+      </div>
+      <div className="step-pill">{step}</div>
     </div>
+
+    {anchorSpec?.class ? (
+      <div className="notice" style={{ marginBottom: 12 }}>
+        Anker: <b>{anchorSpec.class}</b> · voorbeeld: <b>{anchorSpec.example || "-"}</b>
+      </div>
+    ) : null}
 
     {/* -------------------- UPLOAD -------------------- */}
     {step === "upload" && <UploadScreen onFile={handleFile} />}

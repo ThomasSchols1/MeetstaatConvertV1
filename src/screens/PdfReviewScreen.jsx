@@ -149,10 +149,10 @@ export default function PdfReviewScreen({ initialRowsAll, onBack, onConfirm }) {
 
   return (
     <div>
-      <h3>PDF resultaat-preview</h3>
+      <h3>4) Controleer resultaat</h3>
 
       <div style={{ color: "#666", marginBottom: 10 }}>
-        Pas hier Code1 / Omschrijving / Type aan tot alles klopt. Daarna ga je verder.
+        Pas enkel afwijkingen aan en ga verder.
       </div>
 
       <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
@@ -234,14 +234,7 @@ export default function PdfReviewScreen({ initialRowsAll, onBack, onConfirm }) {
         </table>
       </div>
 
-      <div style={{ marginTop: 10, color: "#666", fontSize: 12 }}>
-        Regels:
-        <ul style={{ marginTop: 6 }}>
-          <li><b>Hoofdstuk</b> krijgt automatisch Code1 = H1, H2, … als die leeg is (broncode blijft behouden).</li>
-          <li><b>Tekst</b> kan je “Plak bij vorige post” doen, of apart laten staan onder het hoofdstuk.</li>
-          <li>“Normalisatie opnieuw uitvoeren” past de hoofdstukregels opnieuw toe.</li>
-        </ul>
-      </div>
+      <div style={{ marginTop: 10, color: "#666", fontSize: 12 }}>Controleer vooral type en omschrijving per rij.</div>
     </div>
   );
 }

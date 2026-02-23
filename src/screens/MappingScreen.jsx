@@ -4,7 +4,7 @@ import { TARGET_FIELDS } from "../config/constants";
 export default function MappingScreen({ columns, mapping, setMapping, status, onNext, onBack }) {
   return (
     <div>
-      <h3>4) Kolommen mappen</h3>
+      <h3>4) Koppel kolommen</h3>
 
       <table width="100%" cellPadding="6">
         <thead>
@@ -49,7 +49,7 @@ export default function MappingScreen({ columns, mapping, setMapping, status, on
 
       <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
         <button onClick={onBack}>Terug</button>
-        <button disabled={!status.ok} onClick={onNext}>Verder: Meetstaat preview</button>
+        <button disabled={!status.ok} onClick={onNext}>Verder</button>
       </div>
     </div>
   );

@@ -16,11 +16,11 @@ export default function AnchorScreen({
 
   return (
     <div>
-      <h3>5) Kies eerste hoofdstukregel (anker)</h3>
+      <h3>5) Kies startregel</h3>
 
       <div style={{ marginBottom: 12, display: "flex", gap: 10 }}>
         <button onClick={onBack}>Terug</button>
-        <button onClick={onConfirm}>Bevestigen anker → meetstaat preview</button>
+        <button onClick={onConfirm}>Verder</button>
       </div>
 
       <table width="100%" cellPadding="6" style={{ borderCollapse: "collapse" }}>
@@ -56,7 +56,7 @@ export default function AnchorScreen({
       </table>
 
       <div style={{ marginTop: 10, color: "#666" }}>
-        Kies de rij die het eerste hoofdstuk van de meetstaat voorstelt. De levels worden hierop gebaseerd.
+        Kies de eerste relevante regel van je meetstaat.
       </div>
     </div>
   );
