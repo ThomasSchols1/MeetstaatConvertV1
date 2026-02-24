@@ -323,7 +323,7 @@ export default function PdfStructureScreen({
 
   return (
     <div>
-      <h3>PDF → Tabel, rijtypes en kolommen mappen</h3>
+      <h3>3) Controleer structuur</h3>
 
       <div style={{ color: "#666", marginBottom: 10 }}>
         Bestand: <b>{pdfMeta?.fileName || "-"}</b>
@@ -529,20 +529,7 @@ export default function PdfStructureScreen({
         </table>
       </div>
 
-      <div style={{ marginTop: 10, color: "#666", fontSize: 12 }}>
-        Tips:
-        <ul style={{ marginTop: 6 }}>
-          <li>
-            Als Code &amp; Omschrijving in één kolom staan, kies <b>Code+Omschrijving (split)</b>.
-          </li>
-          <li>
-            Kies de kolom met hoofdstuk-totalen als <b>Totaal</b> zodat auto-detect subtotals herkent (en we die kunnen negeren).
-          </li>
-          <li>
-            Hoofdstuk mag een code hebben of niet: zet rijtype op <b>Hoofdstuk</b>.
-          </li>
-        </ul>
-      </div>
+      <div style={{ marginTop: 10, color: "#666", fontSize: 12 }}>        </div>
 
       <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
         <button onClick={onBack}>Terug</button>

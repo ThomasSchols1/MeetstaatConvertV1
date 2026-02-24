@@ -3,7 +3,7 @@ import React from "react";
 export default function PickSheetScreen({ sheets, selected, onChange, onConfirm, onBack }) {
   return (
     <div>
-      <h3>2) Kies Excel-tabblad</h3>
+      <h3>2) Kies werkblad</h3>
       <div style={{ marginBottom: 12 }}>
         <select value={selected} onChange={(e) => onChange(e.target.value)}>
           {sheets.map((s) => (

@@ -13,7 +13,7 @@ export default function TypeLevelScreen({
 }) {
   return (
     <div>
-      <h3>Corrigeren: Types & Levels</h3>
+      <h3>Types en niveaus</h3>
 
       <div style={{ marginBottom: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
         <button onClick={onBack}>Terug naar preview</button>
@@ -75,7 +75,7 @@ export default function TypeLevelScreen({
       </div>
 
       <div style={{ marginTop: 10, color: "#666" }}>
-        Tip: pas levels aan en klik “Terug naar preview” om de boomstructuur te controleren.
+        Pas enkel aan waar nodig.
       </div>
     </div>
   );

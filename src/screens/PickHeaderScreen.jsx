@@ -5,7 +5,7 @@ import { normalizeStr } from "../utils/format";
 export default function PickHeaderScreen({ rawRows, headerIndex, setHeaderIndex, onBack, onConfirm }) {
   return (
     <div>
-      <h3>3) Kies de header-rij (kolomnamen)</h3>
+      <h3>3) Kies kolomkoppen</h3>
 
       <table width="100%" cellPadding="6" style={{ borderCollapse: "collapse" }}>
         <thead>

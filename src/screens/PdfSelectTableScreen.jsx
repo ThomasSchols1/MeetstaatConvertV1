@@ -278,7 +278,7 @@ export default function PdfSelectTableScreen({ pdfFile, onBack, onExtract }) {
 
   return (
     <div>
-      <h3>PDF: selecteer tabel</h3>
+      <h3>2) Selecteer tabelzone</h3>
 
       {!pdfFile ? <div style={{ color: "red" }}>Geen PDF geselecteerd.</div> : <div style={{ color: "#666", marginBottom: 10 }}>Bestand: <b>{pdfFile.name}</b></div>}
 
@@ -374,9 +374,7 @@ export default function PdfSelectTableScreen({ pdfFile, onBack, onExtract }) {
       </div>
 
       <div style={{ marginTop: 10, color: "#666", fontSize: 12 }}>
-        Teken eerst een selectiezone. Daarna krijg je automatische kolomlijnen die je kan verslepen.
-        <br />
-        Tip: klik “Auto kolommen” na aanpassen van de selectie voor een nieuwe startpositie.
+        Teken een zone, controleer kolomlijnen en klik daarna op “Extracteer tabel”.
       </div>
     </div>
   );
